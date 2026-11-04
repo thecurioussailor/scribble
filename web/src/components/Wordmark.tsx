@@ -24,7 +24,8 @@ export function Wordmark({ size = "large" }: { size?: "large" | "small" }) {
         className={large ? "mt-1 block h-5 w-[92%]" : "block h-2.5 w-[92%]"}
       >
         <path
-          className="squiggle-path"
+          // Draws itself once on the landing page; the small header version is static.
+          className={large ? "squiggle-path" : undefined}
           pathLength={1}
           d="M4 14 C 30 4, 52 22, 80 12 S 132 4, 160 13 S 214 22, 240 11 S 282 6, 296 12"
           fill="none"

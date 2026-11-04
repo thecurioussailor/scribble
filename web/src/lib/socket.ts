@@ -1,7 +1,8 @@
 "use client";
 
 import { io, type Socket } from "socket.io-client";
-import type { AckResponse, ClientToServerEvents, JoinRoomResult, ServerToClientEvents } from "./protocol";
+import { attachLiveListeners } from "./live";
+import type { AckResponse, ChatMessage, ClientToServerEvents, GuessAck, JoinRoomResult, ServerToClientEvents } from "./protocol";
 import { saveSession } from "./session";
 
 export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -34,6 +35,8 @@ export function getSocket(): GameSocket {
     socket.on("disconnect", () => {
       joined = null;
     });
+    // Live game data (strokes, chat, timer) is collected from the very first event.
+    attachLiveListeners(socket);
   }
   return socket;
 }
@@ -70,7 +73,7 @@ async function enterRoom(
 ): Promise<AckResponse<JoinRoomResult>> {
   const s = getSocket();
   try {
-    await waitForConnection(s, 15_000);
+    await waitForConnection(s, 50_000);
     const res = await send(s);
     if (res.ok) {
       joined = { code: res.data.state.code, state: res.data.state };
@@ -129,4 +132,21 @@ export function resumeRoom(code: string, username: string, sessionToken: string)
   });
   resumeInFlight = { code, promise };
   return promise;
+}
+
+/** Shared shape for acked game actions: emit with a timeout, map a timeout to a friendly error. */
+async function sendWithAck<T>(send: (s: GameSocket) => Promise<AckResponse<T>>): Promise<AckResponse<T>> {
+  try {
+    return await send(getSocket());
+  } catch {
+    return OFFLINE;
+  }
+}
+
+export function sendChat(content: string) {
+  return sendWithAck<ChatMessage>((s) => s.timeout(5000).emitWithAck("chat:send", { content }));
+}
+
+export function submitGuess(text: string) {
+  return sendWithAck<GuessAck>((s) => s.timeout(5000).emitWithAck("guess:submit", { text }));
 }

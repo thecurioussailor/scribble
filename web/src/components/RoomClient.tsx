@@ -7,6 +7,7 @@ import type { AckError, RoomStateView } from "@/lib/protocol";
 import { ROOM_CODE_PATTERN, USERNAME_MAX } from "@/lib/protocol";
 import { clearSession, loadName, loadSession, saveName, validateName } from "@/lib/session";
 import { getJoinedRoom, getSocket, joinRoom, leaveRoom, resumeRoom, startGame } from "@/lib/socket";
+import { GameView } from "./game/GameView";
 import { Wordmark } from "./Wordmark";
 
 /**
@@ -111,7 +112,7 @@ export function RoomClient({ code }: { code: string }) {
         </Centered>
       );
     case "joined":
-      return <Lobby state={screen.state} />;
+      return <JoinedRoom state={screen.state} />;
   }
 }
 
@@ -173,18 +174,37 @@ function JoinWithName({ code, onJoined }: { code: string; onJoined: (state: Room
   );
 }
 
-function Lobby({ state }: { state: RoomStateView }) {
+/** In a room: the game screen while a game runs, otherwise the lobby (before and after games). */
+function JoinedRoom({ state }: { state: RoomStateView }) {
   const router = useRouter();
+  async function onLeave() {
+    await leaveRoom();
+    clearSession(state.code);
+    router.push("/");
+  }
+  const gameRunning = state.phase === "starting" || state.phase === "playing" || state.phase === "between_turns";
+  return gameRunning ? <GameView state={state} onLeave={onLeave} /> : <Lobby state={state} onLeave={onLeave} />;
+}
+
+function Lobby({ state, onLeave }: { state: RoomStateView; onLeave: () => void }) {
   const [copied, setCopied] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const inviteLink = `${window.location.origin}/room/${state.code}`;
 
-  const me = state.players.find((p) => p.id === state.selfId);
   const host = state.players.find((p) => p.id === state.hostId);
   const isHost = state.selfId === state.hostId;
   const connectedCount = state.players.filter((p) => p.isConnected).length;
-  const canStart = isHost && connectedCount >= 2 && (state.phase === "waiting" || state.phase === "finished");
+  const finished = state.phase === "finished";
+  const canStart = isHost && connectedCount >= 2;
+
+  // After a game, rank by score. Ties share a place, like on the server.
+  const standings = finished
+    ? [...state.players]
+        .sort((a, b) => b.score - a.score)
+        .map((p, _i, all) => ({ ...p, place: all.findIndex((q) => q.score === p.score) + 1 }))
+    : state.players.map((p) => ({ ...p, place: 0 }));
+  const winners = standings.filter((p) => p.place === 1);
 
   async function copyInvite() {
     try {
@@ -204,14 +224,6 @@ function Lobby({ state }: { state: RoomStateView }) {
     if (!res.ok) setStartError(res.error.message);
   }
 
-  async function onLeave() {
-    await leaveRoom();
-    clearSession(state.code);
-    router.push("/");
-  }
-
-  const inGame = state.phase !== "waiting" && state.phase !== "finished";
-
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-5 py-6 sm:px-8">
       <header className="flex items-center justify-between">
@@ -223,70 +235,68 @@ function Lobby({ state }: { state: RoomStateView }) {
 
       <div className="mt-10 grid flex-1 gap-12 md:mt-16 md:grid-cols-[1.15fr_1fr]">
         <section>
-          <h1 className="font-hand text-[clamp(3rem,7vw,4.5rem)] leading-[0.9] text-cobalt">
-            {inGame ? `Round ${state.round} of ${state.totalRounds}` : state.phase === "finished" ? "Game over" : "Waiting for players"}
-          </h1>
-
-          {!inGame && (
+          {finished ? (
             <>
-              <p className="mt-4 max-w-[40ch] text-lg">Send this link to your friends. Anyone who opens it can join.</p>
-              <div className="mt-6 flex max-w-md flex-col gap-3 sm:flex-row">
-                <div className="crayon crayon-coat min-w-0 flex-1 px-4 py-3">
-                  <p className="truncate text-[0.95rem]" title={inviteLink}>{inviteLink}</p>
-                </div>
-                <button onClick={copyInvite} className="crayon crayon-coat crayon-cobalt-line crayon-button shrink-0 px-5 py-3 font-semibold text-cobalt">
-                  <span aria-live="polite">{copied ? "Copied" : "Copy invite link"}</span>
-                </button>
-              </div>
-              <p className="mt-3 text-[0.95rem] text-graphite">
-                Room code <span className="font-semibold tracking-[0.12em] text-ink">{state.code}</span>
-              </p>
-
-              <div className="mt-10 max-w-sm">
-                {isHost ? (
-                  <>
-                    <button onClick={onStart} disabled={!canStart || starting} className="crayon crayon-tomato crayon-grain crayon-button font-hand block w-full px-6 pb-2.5 pt-3 text-[2.4rem] leading-none">
-                      {starting ? "Starting…" : state.phase === "finished" ? "Play again" : "Start game"}
-                    </button>
-                    {connectedCount < 2 && <p className="mt-3 text-graphite">You need at least one more player to start.</p>}
-                  </>
-                ) : (
-                  <p className="text-lg text-graphite">Waiting for {host?.username ?? "the host"} to start the game.</p>
-                )}
-                {startError && <p role="alert" className="mt-3 font-medium text-tomato-deep">{startError}</p>}
-              </div>
+              <p className="text-lg text-graphite">Game over</p>
+              <h1 className="font-hand text-[clamp(3rem,7vw,4.75rem)] leading-[0.9] text-cobalt">
+                {winners.length === 1 ? `${winners[0]!.username} wins!` : "It's a tie!"}
+              </h1>
+              {winners.length > 1 && <p className="mt-3 text-lg">{winners.map((w) => w.username).join(" and ")} share first place.</p>}
             </>
+          ) : (
+            <h1 className="font-hand text-[clamp(3rem,7vw,4.5rem)] leading-[0.9] text-cobalt">Waiting for players</h1>
           )}
 
-          {inGame && (
-            <p className="mt-4 max-w-[42ch] text-lg">
-              {state.turn
-                ? `${state.players.find((p) => p.id === state.turn?.drawerId)?.username ?? "Someone"} is drawing.`
-                : "Get ready for the next turn."}{" "}
-              The drawing board arrives in the next step of the build.
-            </p>
-          )}
+          <p className="mt-4 max-w-[40ch] text-lg">
+            {finished ? "Invite more friends before the next game:" : "Send this link to your friends. Anyone who opens it can join."}
+          </p>
+          <div className="mt-4 flex max-w-md flex-col gap-3 sm:flex-row">
+            <div className="crayon crayon-coat min-w-0 flex-1 px-4 py-3">
+              <p className="truncate text-[0.95rem]" title={inviteLink}>{inviteLink}</p>
+            </div>
+            <button onClick={copyInvite} className="crayon crayon-coat crayon-cobalt-line crayon-button shrink-0 px-5 py-3 font-semibold text-cobalt">
+              <span aria-live="polite">{copied ? "Copied" : "Copy invite link"}</span>
+            </button>
+          </div>
+          <p className="mt-3 text-[0.95rem] text-graphite">
+            Room code <span className="font-semibold tracking-[0.12em] text-ink">{state.code}</span>
+          </p>
+
+          <div className="mt-10 max-w-sm">
+            {isHost ? (
+              <>
+                <button onClick={onStart} disabled={!canStart || starting} className="crayon crayon-tomato crayon-grain crayon-button font-hand block w-full px-6 pb-2.5 pt-3 text-[2.4rem] leading-none">
+                  {starting ? "Starting…" : finished ? "Play again" : "Start game"}
+                </button>
+                {connectedCount < 2 && <p className="mt-3 text-graphite">You need at least one more player to start.</p>}
+              </>
+            ) : (
+              <p className="text-lg text-graphite">
+                Waiting for {host?.username ?? "the host"} to {finished ? "start another game" : "start the game"}.
+              </p>
+            )}
+            {startError && <p role="alert" className="mt-3 font-medium text-tomato-deep">{startError}</p>}
+          </div>
         </section>
 
         <section aria-labelledby="players-heading">
           <h2 id="players-heading" className="text-lg text-graphite">
-            Players {state.players.length}/{state.settings.maxPlayers}
+            {finished ? "Final scores" : `Players ${state.players.length}/${state.settings.maxPlayers}`}
           </h2>
-          <ul className="mt-4 space-y-3">
-            {state.players.map((player) => (
-              <li key={player.id} className={`crayon crayon-coat flex items-baseline justify-between gap-4 px-5 py-3 ${player.isConnected ? "" : "opacity-55"}`}>
-                <span className="font-hand truncate text-[1.9rem] leading-none">
+          <ol className="mt-4 space-y-3">
+            {standings.map((player) => (
+              <li key={player.id} className={`crayon crayon-coat flex items-baseline gap-4 px-5 py-3 ${player.isConnected ? "" : "opacity-55"}`}>
+                {finished && <span className="font-hand w-6 shrink-0 text-[1.9rem] leading-none text-cobalt">{player.place}</span>}
+                <span className="font-hand min-w-0 flex-1 truncate text-[1.9rem] leading-none">
                   {player.username}
-                  {player.id === me?.id && <span className="ml-2 font-sans text-base text-graphite">(you)</span>}
+                  {player.id === state.selfId && <span className="ml-2 font-sans text-base text-graphite">(you)</span>}
                 </span>
                 <span className="shrink-0 text-[0.95rem] text-graphite">
-                  {[player.isHost && "Host", !player.isConnected && "Reconnecting", (inGame || state.phase === "finished") && `${player.score} pts`]
-                    .filter(Boolean)
-                    .join(", ")}
+                  {[player.isHost && "Host", !player.isConnected && "Reconnecting", finished && `${player.score} pts`].filter(Boolean).join(", ")}
                 </span>
               </li>
             ))}
-          </ul>
+          </ol>
         </section>
       </div>
     </main>
