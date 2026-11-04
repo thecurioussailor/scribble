@@ -1,0 +1,25 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# IMPORTANT: keep numInstances at 1. Room state lives in process memory (see server/README.md §10).
+services:
+  - type: web
+    name: scribble-server
+    runtime: node
+    rootDir: server
+    plan: free # use "starter" or above to avoid sleeping; free instances lose rooms when idle
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: CORS_ORIGINS
+        sync: false # set to your frontend URL, e.g. https://scribble.vercel.app
+      - key: LIVEKIT_URL
+        sync: false # optional: leave empty to disable voice
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false

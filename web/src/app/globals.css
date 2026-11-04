@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+/*
+ * Palette sampled directly from the walking-friends illustration, so the UI
+ * and the artwork read as one drawing.
+ */
+@theme {
+  --color-paper: #f0efeb; /* the illustration's background, exactly */
+  --color-ink: #000000; /* crayon black */
+  --color-graphite: #55534f; /* secondary text, 7:1 on paper */
+  --color-cobalt: #1c38a8;
+  --color-tomato: #e44a26;
+  --color-tomato-deep: #a8311a; /* errors: readable red on paper */
+  --color-coat: #ffffff;
+}
+
+@theme inline {
+  --font-hand: var(--font-caveat-brush);
+  --font-sans: var(--font-familjen), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Crayon shapes.
+ * The outline/fill lives on ::before and goes through an SVG displacement
+ * filter (#crayon-wobble, defined in layout.tsx), which makes straight edges
+ * wobble like a hand-drawn line. The content sits above it, unfiltered,
+ * so text stays crisp.
+ */
+@layer components {
+  .crayon {
+    position: relative;
+    isolation: isolate;
+    --crayon-radius: 18px 12px 20px 11px / 12px 20px 11px 18px;
+    --crayon-fill: transparent;
+    --crayon-line: var(--color-ink);
+    border-radius: var(--crayon-radius);
+  }
+  .crayon::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border: 3px solid var(--crayon-line);
+    border-radius: var(--crayon-radius);
+    background: var(--crayon-fill);
+    filter: url(#crayon-wobble);
+    pointer-events: none;
+  }
+  /* Pastel grain: flecks of paper showing through the colour, as with real crayon. */
+  .crayon-grain::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    z-index: -1;
+    border-radius: var(--crayon-radius);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.94 0 0 0 0 0.94 0 0 0 0 0.92 3.2 0 0 0 -1.75'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  .crayon-tomato {
+    --crayon-fill: var(--color-tomato);
+  }
+  .crayon-coat {
+    --crayon-fill: var(--color-coat);
+  }
+  .crayon-cobalt-line {
+    --crayon-line: var(--color-cobalt);
+  }
+
+  /* Keyboard focus: a cobalt ring that follows the wobbly shape. */
+  .crayon:focus-visible,
+  .crayon:has(:focus-visible) {
+    outline: 3px solid var(--color-cobalt);
+    outline-offset: 5px;
+  }
+  .crayon :focus-visible {
+    outline: none;
+  }
+
+  /* A button that feels like a pressed sticker: wiggle on hover, sink on press. */
+  .crayon-button {
+    transition: transform 140ms ease-out;
+  }
+  .crayon-button:hover:not(:disabled) {
+    transform: rotate(-1.2deg) scale(1.02);
+  }
+  .crayon-button:active:not(:disabled) {
+    transform: translateY(2px) scale(0.99);
+  }
+  .crayon-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+}
+
+/* The squiggle under the wordmark draws itself once, on load. */
+@keyframes draw-squiggle {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.squiggle-path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw-squiggle 900ms 250ms cubic-bezier(0.6, 0, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .squiggle-path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .crayon-button,
+  .crayon-button:hover:not(:disabled),
+  .crayon-button:active:not(:disabled) {
+    transition: none;
+    transform: none;
+  }
+}
