@@ -127,7 +127,6 @@ export function PlayForm() {
                   id={codeId}
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  autoFocus
                   autoCapitalize="characters"
                   autoComplete="off"
                   spellCheck={false}
