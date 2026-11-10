@@ -57,6 +57,8 @@ export interface AppConfig {
   startCountdownMs: number;
   /** Pause between turns so players can see the scores. */
   betweenTurnsMs: number;
+  /** Public rooms: how long the final scores stay up before the next game starts. */
+  publicRestartDelayMs: number;
   livekit: {
     url: string | undefined;
     apiKey: string | undefined;
@@ -85,6 +87,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     emptyRoomTtlMs: env.EMPTY_ROOM_TTL_SECONDS * 1000,
     startCountdownMs: 3_000,
     betweenTurnsMs: 5_000,
+    publicRestartDelayMs: 12_000,
     livekit: {
       url: env.LIVEKIT_URL,
       apiKey: env.LIVEKIT_API_KEY,

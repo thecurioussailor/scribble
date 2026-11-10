@@ -37,7 +37,7 @@ export class FakeBroadcaster implements Broadcaster {
 /** Builds a room with N connected players directly in memory. */
 export function buildRoom(usernames: string[] = ["alice", "bob"]): { room: Room; players: Player[] } {
   const players = usernames.map((name, i) => createPlayer(name, `socket-${i}`));
-  const room = createRoom("TESTROOM", players[0]!, { maxPlayers: 8, totalRounds: 2, turnDurationMs: 80_000 });
+  const room = createRoom("TESTROOM", players[0]!, { visibility: "private", maxPlayers: 8, totalRounds: 2, turnDurationMs: 80_000 });
   for (const p of players.slice(1)) room.players.set(p.id, p);
   return { room, players };
 }

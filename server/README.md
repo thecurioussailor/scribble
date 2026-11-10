@@ -173,6 +173,15 @@ room:create → room exists, creator is host
    └─ last player leaves → room deleted immediately
 ```
 
+**Public vs. private rooms**
+
+| | Private (`room:create`) | Public (`room:quick-join`, the **Play** button) |
+|---|---|---|
+| How people join | Invite link or code | Matchmaking: busiest public room with a free seat, else a new one |
+| Starting a game | Host presses Start | Starts by itself when 2+ players are online |
+| After a game | Back to the lobby | Next game starts by itself after 12s (or waits for players) |
+| Duplicate names | Rejected (`USERNAME_TAKEN`) | Renamed (`ashu` → `ashu2`) |
+
 **Game state machine**
 
 ```

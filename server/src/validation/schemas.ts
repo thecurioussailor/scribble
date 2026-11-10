@@ -52,6 +52,9 @@ export const joinRoomSchema = z.object({
   sessionToken: sessionTokenSchema.optional(),
 });
 
+/** "Play with anyone": only a name is needed; the server picks the room. */
+export const quickJoinSchema = z.object({ username: usernameSchema });
+
 export const startGameSchema = z
   .object({
     rounds: z.number().int().min(1).max(LIMITS.maxRounds).optional(),
@@ -97,6 +100,7 @@ export const voiceTokenRequestSchema = z.object({ roomCode: roomCodeSchema });
 
 export type CreateRoomPayload = z.input<typeof createRoomSchema>;
 export type JoinRoomPayload = z.input<typeof joinRoomSchema>;
+export type QuickJoinPayload = z.input<typeof quickJoinSchema>;
 export type StartGamePayload = z.input<typeof startGameSchema>;
 export type DrawStartPayload = z.input<typeof drawStartSchema>;
 export type DrawMovePayload = z.input<typeof drawMoveSchema>;

@@ -46,6 +46,7 @@ export function toRoomView(room: Room, viewerId: string, now = Date.now()): Room
     code: room.code,
     hostId: room.hostId,
     selfId: viewerId,
+    visibility: room.settings.visibility,
     phase: room.game.phase,
     round: room.game.round,
     totalRounds: room.game.totalRounds,

@@ -118,6 +118,22 @@ Room codes are case-insensitive. After a successful join the server also sends
 A token for a *different* room, or for a player who was already removed, is ignored, and you
 join as a new player.
 
+### `room:quick-join` (ack)
+
+"Play with anyone": no room code, the server picks the room.
+
+```jsonc
+// payload
+{ "username": "ashu" }
+// ack data: JoinRoomResult (state.visibility === "public")
+```
+
+Matchmaking puts you in the **busiest public room with a free seat** (at least one person online),
+or opens a new public room. If your name is taken there, you get a number added (`ashu` → `ashu2`).
+Public rooms have no host controls: the game **starts by itself** once 2 players are online, and
+the **next game starts by itself** `nextGameInMs` after `game:finished`. Private rooms (from
+`room:create`) are never matched. After joining, the server sends `draw:sync` and `chat:history`.
+
 ### `room:leave` (ack optional)
 
 No payload. Permanently leaves the room, reassigning host if needed.
@@ -129,7 +145,7 @@ No payload. Permanently leaves the room, reassigning host if needed.
 { "rounds": 2 }    // override (1–10)
 ```
 
-Allowed in `waiting` or `finished`. Needs 2+ connected players.
+Allowed in `waiting` or `finished`, in **private** rooms only (public games start themselves). Needs 2+ connected players.
 
 ### `draw:start` / `draw:move` / `draw:end` (ack optional, drawer only)
 
@@ -184,6 +200,7 @@ Sent after every meaningful change. **Personalized**: `turn.word` is only presen
   "code": "ABCD2345",
   "hostId": "q3Zr8x0mT2pA",
   "selfId": "Lm0pQ7sZk1Yb",          // who this view is for
+  "visibility": "private",           // "public" = matchmade, no lobby or Start button
   "phase": "playing",                // waiting | starting | playing | between_turns | finished
   "round": 1,
   "totalRounds": 3,
@@ -231,7 +248,8 @@ Sent after every meaningful change. **Personalized**: `turn.word` is only presen
   "nextTurnAt": 1730740005000        // null if this was the final turn
 }
 
-"game:finished"     { "leaderboard": [ { "playerId": "…", "username": "bob", "score": 1630, "rank": 1 } ] }
+"game:finished"     { "leaderboard": [ { "playerId": "…", "username": "bob", "score": 1630, "rank": 1 } ],
+                      "nextGameInMs": 12000 }   // public rooms restart on their own; null for private rooms
 ```
 
 Ties share a rank (1, 2, 2, 4).

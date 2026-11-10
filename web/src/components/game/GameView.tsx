@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
-import { deadlineStore, feedStore, pushFeed, turnEndedStore, type FeedItem, type TurnEnded } from "@/lib/live";
+import { deadlineStore, feedStore, nextGameStore, pushFeed, turnEndedStore, type FeedItem, type TurnEnded } from "@/lib/live";
 import type { PublicPlayer, RoomStateView } from "@/lib/protocol";
 import { sendChat, submitGuess } from "@/lib/socket";
 import { Wordmark } from "../Wordmark";
@@ -14,9 +14,9 @@ function useStore<T>(store: ValueStore<T>): T {
   return useSyncExternalStore(store.subscribe, store.get, store.get);
 }
 
-/** Whole seconds left in the turn, re-rendered 4×/s while a turn runs. */
-function useSecondsLeft(): number | null {
-  const deadline = useStore(deadlineStore);
+/** Whole seconds until a deadline store's time, re-rendered 4×/s while it's set. */
+function useSecondsUntil(store: ValueStore<number | null>): number | null {
+  const deadline = useStore(store);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (deadline === null) return;
@@ -38,7 +38,7 @@ export function GameView({ state, onLeave }: { state: RoomStateView; onLeave: ()
       <header className="flex items-center justify-between gap-4">
         <Wordmark size="small" />
         <p className="font-hand text-2xl text-cobalt sm:text-3xl">
-          Round {Math.max(1, state.round)} of {state.totalRounds}
+          {state.phase === "waiting" ? "Public game" : state.phase === "finished" ? "Game over" : `Round ${Math.max(1, state.round)} of ${state.totalRounds}`}
         </p>
         <button
           onClick={onLeave}
@@ -66,7 +66,7 @@ export function GameView({ state, onLeave }: { state: RoomStateView; onLeave: ()
 }
 
 function TurnTimer() {
-  const seconds = useSecondsLeft();
+  const seconds = useSecondsUntil(deadlineStore);
   const urgent = seconds !== null && seconds <= 10;
   return (
     <div
@@ -86,7 +86,15 @@ function TurnTimer() {
 function WordBar({ state, isDrawer, hasGuessed, drawerName }: { state: RoomStateView; isDrawer: boolean; hasGuessed: boolean; drawerName?: string }) {
   const turn = state.turn;
   if (state.phase !== "playing" || !turn) {
-    return <p className="text-lg text-graphite">{state.phase === "starting" ? "Get ready…" : "Next turn coming up…"}</p>;
+    const message =
+      state.phase === "starting"
+        ? "Get ready…"
+        : state.phase === "waiting"
+          ? "Waiting for one more player…"
+          : state.phase === "finished"
+            ? "The next game starts soon."
+            : "Next turn coming up…";
+    return <p className="text-lg text-graphite">{message}</p>;
   }
   if (isDrawer) {
     return (
@@ -124,6 +132,9 @@ const END_REASON: Record<TurnEnded["reason"], string> = {
 
 /** Content shown over the canvas between turns, or null during play. */
 function canvasOverlay(state: RoomStateView, turnEnded: TurnEnded | null): React.ReactNode {
+  // Public rooms only (private rooms show the lobby in these phases).
+  if (state.phase === "waiting") return <WaitingOverlay code={state.code} />;
+  if (state.phase === "finished") return <FinishedOverlay state={state} />;
   if (state.phase === "starting") {
     return (
       <div>
@@ -154,6 +165,61 @@ function canvasOverlay(state: RoomStateView, turnEnded: TurnEnded | null): React
     );
   }
   return null;
+}
+
+/** Alone in a public room: say what happens next, and offer a way to bring a friend. */
+function WaitingOverlay({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/room/${code}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return (
+    <div className="max-w-sm">
+      <p className="font-hand text-5xl leading-none text-cobalt">Waiting for one more player</p>
+      <p className="mt-3 text-lg">The game starts the moment someone else joins. You can chat while you wait.</p>
+      <button onClick={copy} className="crayon crayon-coat crayon-cobalt-line crayon-button mt-5 px-5 py-2.5 font-semibold text-cobalt">
+        <span aria-live="polite">{copied ? "Copied" : "Invite a friend"}</span>
+      </button>
+    </div>
+  );
+}
+
+/** End of a public game: the standings, then the next game starts on its own. */
+function FinishedOverlay({ state }: { state: RoomStateView }) {
+  const seconds = useSecondsUntil(nextGameStore);
+  const ranked = [...state.players].sort((a, b) => b.score - a.score);
+  const topScore = ranked[0]?.score ?? 0;
+  const winners = ranked.filter((p) => p.score === topScore);
+  return (
+    <div className="w-full max-w-sm">
+      <p className="font-hand text-5xl leading-none text-cobalt">
+        {topScore === 0 ? "Nobody scored this time" : winners.length === 1 ? `${winners[0]!.username} wins!` : "It's a tie!"}
+      </p>
+      <ol className="mt-4 space-y-1 text-left text-lg">
+        {ranked.slice(0, 5).map((p) => (
+          <li key={p.id} className="flex justify-between gap-4">
+            <span className="truncate">
+              {ranked.findIndex((q) => q.score === p.score) + 1}. {p.username}
+            </span>
+            <span className="font-semibold">{p.score}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-4 text-graphite">
+        {state.players.filter((p) => p.isConnected).length < 2
+          ? "Waiting for more players to start the next game."
+          : seconds !== null && seconds > 0
+            ? `Next game in ${seconds}…`
+            : "Starting the next game…"}
+      </p>
+    </div>
+  );
 }
 
 function ChatPanel({ state, isDrawer, hasGuessed }: { state: RoomStateView; isDrawer: boolean; hasGuessed: boolean }) {

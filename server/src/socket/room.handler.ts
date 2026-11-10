@@ -1,7 +1,7 @@
 import { GameError } from "../services/errors.js";
 import { logger } from "../utils/logger.js";
 import type { Room } from "../types/game.types.js";
-import { createRoomSchema, joinRoomSchema } from "../validation/schemas.js";
+import { createRoomSchema, joinRoomSchema, quickJoinSchema } from "../validation/schemas.js";
 import type { ConnectionContext } from "./context.js";
 import { bindSocketToRoom, enforceRateLimit, parsePayload, requirePlayer, respond, unbindSocket } from "./handler-utils.js";
 
@@ -38,6 +38,21 @@ export function registerRoomHandlers(ctx: ConnectionContext): void {
       return roomService.buildJoinResult(room, player, reconnected);
     });
     // Sent after the ack, so the client already knows it joined.
+    if (joinedRoom) sendCatchUp(joinedRoom);
+  });
+
+  socket.on("room:quick-join", (payload, ack) => {
+    let joinedRoom: Room | undefined;
+    respond(ack, () => {
+      enforceRateLimit(ctx.socketRateLimits, "room");
+      if (socket.data.roomCode) throw new GameError("ALREADY_IN_ROOM", "Leave your current room first.");
+      const { username } = parsePayload(quickJoinSchema, payload);
+      const { room, player } = roomService.quickJoin(socket.id, username);
+      bindSocketToRoom(socket, room, player);
+      joinedRoom = room;
+      return roomService.buildJoinResult(room, player, false);
+    });
+    // Mid-game arrivals need the current drawing and chat straight away.
     if (joinedRoom) sendCatchUp(joinedRoom);
   });
 

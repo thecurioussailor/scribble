@@ -92,7 +92,14 @@ export interface GameState {
   lastTurnResult: TurnResult | null;
 }
 
+/**
+ * private: invite-only, host starts the game (friends).
+ * public: anyone can be matched in via "Play"; games start and restart on their own.
+ */
+export type RoomVisibility = "public" | "private";
+
 export interface RoomSettings {
+  visibility: RoomVisibility;
   maxPlayers: number;
   totalRounds: number;
   turnDurationMs: number;

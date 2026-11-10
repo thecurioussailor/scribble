@@ -57,6 +57,7 @@ export class RoomService {
   createRoom(socketId: string, input: CreateRoomInput): { room: Room; player: Player } {
     const host = createPlayer(input.username, socketId);
     const settings = {
+      visibility: "private" as const,
       // A client may lower the cap, never raise it above the server's limit.
       maxPlayers: Math.min(input.settings?.maxPlayers ?? this.config.maxPlayersPerRoom, this.config.maxPlayersPerRoom),
       totalRounds: input.settings?.rounds ?? this.config.defaultRounds,
@@ -91,14 +92,68 @@ export class RoomService {
     if (room.players.size >= room.settings.maxPlayers) {
       throw new GameError("ROOM_FULL", "This room is full.");
     }
-    const wanted = input.username.toLowerCase();
-    for (const existing of room.players.values()) {
-      if (existing.username.toLowerCase() === wanted) {
+    let username = input.username;
+    if (this.isUsernameTaken(room, username)) {
+      // Friends can pick another name; strangers in a public room just get "ashu2".
+      if (room.settings.visibility === "private") {
         throw new GameError("USERNAME_TAKEN", "That username is already taken in this room.");
       }
+      username = this.uniqueUsername(room, username);
     }
+    const player = this.addPlayer(room, socketId, username);
+    return { room, player, reconnected: false };
+  }
 
-    const player = createPlayer(input.username, socketId);
+  /**
+   * "Play with anyone": put the player straight into the busiest public room
+   * that has a free seat, or open a new public room if none does.
+   *
+   * Preferring the BUSIEST room (not a random one) concentrates players, so
+   * games fill up instead of everyone waiting alone in separate rooms.
+   *
+   * CONCURRENCY: synchronous, like everything else in the services. Two people
+   * pressing Play at the same instant are handled one after the other, so the
+   * seat check and the seat assignment can't interleave and overfill a room.
+   */
+  quickJoin(socketId: string, requestedName: string): { room: Room; player: Player } {
+    const room = this.findPublicRoomWithSpace();
+    if (!room) {
+      const host = createPlayer(requestedName, socketId);
+      const settings = {
+        visibility: "public" as const,
+        maxPlayers: this.config.maxPlayersPerRoom,
+        totalRounds: this.config.defaultRounds,
+        turnDurationMs: this.config.turnDurationMs,
+      };
+      const created = createRoom(this.store.generateUniqueCode(), host, settings);
+      this.store.add(created);
+      this.broadcaster.syncRoomState(created);
+      return { room: created, player: host };
+    }
+    const player = this.addPlayer(room, socketId, this.uniqueUsername(room, requestedName));
+    return { room, player };
+  }
+
+  /** Public, not full, and with at least one person actually online. Busiest first, then oldest. */
+  private findPublicRoomWithSpace(): Room | null {
+    let best: Room | null = null;
+    let bestOnline = 0;
+    for (const room of this.store.values()) {
+      if (room.settings.visibility !== "public") continue;
+      if (room.players.size >= room.settings.maxPlayers) continue;
+      const online = [...room.players.values()].filter((p) => p.socketId !== null).length;
+      if (online === 0) continue; // everyone's disconnected: likely about to be cleaned up
+      if (!best || online > bestOnline || (online === bestOnline && room.createdAt < best.createdAt)) {
+        best = room;
+        bestOnline = online;
+      }
+    }
+    return best;
+  }
+
+  /** Shared by join and quick-join: seat a new player and tell everyone. */
+  private addPlayer(room: Room, socketId: string, username: string): Player {
+    const player = createPlayer(username, socketId);
     room.players.set(player.id, player);
     this.store.addSession(player, room.code);
     this.cancelEmptyRoomCleanup(room);
@@ -106,7 +161,25 @@ export class RoomService {
     this.broadcaster.toRoomExcept(room.code, player, "player:joined", { player: toPublicPlayer(room, player) });
     this.gameHooks.onPlayerJoined(room, player);
     this.broadcaster.syncRoomState(room);
-    return { room, player, reconnected: false };
+    return player;
+  }
+
+  private isUsernameTaken(room: Room, username: string): boolean {
+    const wanted = username.toLowerCase();
+    for (const existing of room.players.values()) {
+      if (existing.username.toLowerCase() === wanted) return true;
+    }
+    return false;
+  }
+
+  /** "ashu" → "ashu2" → "ashu3"…, staying within the 20-character limit. */
+  private uniqueUsername(room: Room, username: string): string {
+    if (!this.isUsernameTaken(room, username)) return username;
+    for (let n = 2; ; n++) {
+      const suffix = String(n);
+      const candidate = username.slice(0, 20 - suffix.length) + suffix;
+      if (!this.isUsernameTaken(room, candidate)) return candidate;
+    }
   }
 
   private reconnect(room: Room, player: Player, socketId: string): void {

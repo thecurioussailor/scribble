@@ -147,6 +147,8 @@ export const deadlineStore = createValueStore<number | null>(null);
 export type TurnEnded = Parameters<ServerToClientEvents["game:turn-ended"]>[0];
 export const turnEndedStore = createValueStore<TurnEnded | null>(null);
 export const leaderboardStore = createValueStore<LeaderboardEntry[] | null>(null);
+/** Public rooms: when the next game starts (this browser's clock), or null. */
+export const nextGameStore = createValueStore<number | null>(null);
 
 // ──────────────────────────── Wiring ───────────────────────────────────
 
@@ -176,6 +178,7 @@ export function attachLiveListeners(socket: GameSocket) {
   socket.on("game:started", () => {
     turnEndedStore.set(null);
     leaderboardStore.set(null);
+    nextGameStore.set(null);
   });
   socket.on("game:turn-started", ({ turn }) => {
     turnEndedStore.set(null);
@@ -185,8 +188,9 @@ export function attachLiveListeners(socket: GameSocket) {
     turnEndedStore.set(result);
     deadlineStore.set(null);
   });
-  socket.on("game:finished", ({ leaderboard }) => {
+  socket.on("game:finished", ({ leaderboard, nextGameInMs }) => {
     leaderboardStore.set(leaderboard);
     deadlineStore.set(null);
+    nextGameStore.set(nextGameInMs === null ? null : Date.now() + nextGameInMs);
   });
 }

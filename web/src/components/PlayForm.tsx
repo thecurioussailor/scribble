@@ -5,13 +5,16 @@ import { useId, useState, type FormEvent } from "react";
 import { useBrowserValue } from "@/lib/browser";
 import { ROOM_CODE_PATTERN, USERNAME_MAX } from "@/lib/protocol";
 import { loadName, saveName, validateName } from "@/lib/session";
-import { createRoom, joinRoom } from "@/lib/socket";
+import { createRoom, joinRoom, quickJoin } from "@/lib/socket";
 
 /** Accepts "abcd2345", "ABCD 2345", or a full invite link like https://…/room/ABCD2345. */
 function extractRoomCode(input: string): string {
   const lastSegment = input.trim().split("/").filter(Boolean).at(-1) ?? "";
   return lastSegment.replace(/\s+/g, "").toUpperCase();
 }
+
+/** play: random public game · private: new room for friends · join: room from an invite code */
+type Action = "play" | "private" | "join";
 
 export function PlayForm() {
   const router = useRouter();
@@ -25,12 +28,12 @@ export function PlayForm() {
   const storedName = useBrowserValue(loadName, "");
   const [typed, setName] = useState<string | null>(null);
   const name = typed ?? storedName;
-  const [busy, setBusy] = useState<"play" | "join" | null>(null);
+  const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [code, setCode] = useState("");
 
-  async function enter(kind: "play" | "join") {
+  async function enter(kind: Action) {
     const nameError = validateName(name);
     if (nameError) {
       setError(nameError);
@@ -49,7 +52,8 @@ export function PlayForm() {
     setError(null);
     setBusy(kind);
     saveName(username);
-    const res = kind === "play" ? await createRoom(username) : await joinRoom(roomCode, username);
+    const res =
+      kind === "play" ? await quickJoin(username) : kind === "private" ? await createRoom(username) : await joinRoom(roomCode, username);
     if (res.ok) {
       router.push(`/room/${res.data.state.code}`);
       return; // keep the button busy while the next page loads
@@ -101,13 +105,23 @@ export function PlayForm() {
           disabled={busy !== null}
           className="crayon crayon-tomato crayon-grain crayon-button font-hand mt-5 block w-full px-6 pb-2.5 pt-3 text-[2.6rem] leading-none text-ink"
         >
-          {busy === "play" ? "Making your room…" : "Play"}
+          {busy === "play" ? "Finding a game…" : "Play"}
         </button>
-        <p className="mt-3 text-[0.95rem] text-graphite">Starts a new room. Share the link with friends to play together.</p>
+        <p className="mt-3 text-[0.95rem] text-graphite">Jumps straight into a game with other players.</p>
       </form>
 
+      <button
+        type="button"
+        onClick={() => void enter("private")}
+        disabled={busy !== null}
+        className="crayon crayon-coat crayon-cobalt-line crayon-button mt-6 block w-full px-6 py-3 text-lg font-semibold text-cobalt"
+      >
+        {busy === "private" ? "Making your room…" : "Create private room"}
+      </button>
+      <p className="mt-2 text-[0.95rem] text-graphite">Play with friends only. You get a link to share.</p>
 
-      <div className="mt-8">
+
+      <div className="mt-6">
         {!showCode ? (
           <button
             type="button"

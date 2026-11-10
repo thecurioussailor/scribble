@@ -39,7 +39,11 @@ export class GameService implements GameHooks {
 
   // ───────────────────────────── Commands ─────────────────────────────
 
+  /** The host's "Start game" button (private rooms only). */
   startGame(room: Room, player: Player, options: { rounds?: number | undefined } = {}): void {
+    if (room.settings.visibility === "public") {
+      throw new GameError("INVALID_STATE", "Public games start on their own when enough players join.");
+    }
     if (room.hostId !== player.id) throw new GameError("NOT_HOST", "Only the host can start the game.");
     if (room.game.phase !== "waiting" && room.game.phase !== "finished") {
       throw new GameError("GAME_IN_PROGRESS", "A game is already in progress.");
@@ -47,12 +51,27 @@ export class GameService implements GameHooks {
     if (this.connectedPlayers(room).length < LIMITS.minPlayersToStart) {
       throw new GameError("NOT_ENOUGH_PLAYERS", `At least ${LIMITS.minPlayersToStart} players are needed to start.`);
     }
+    this.beginGame(room, options.rounds ?? room.settings.totalRounds);
+  }
 
+  /**
+   * Public rooms have no host button: a game begins as soon as 2 players are
+   * online, whether the room is new (waiting) or between games (finished).
+   */
+  private maybeAutoStart(room: Room): void {
+    if (room.settings.visibility !== "public") return;
+    if (room.game.phase !== "waiting") return; // "finished" restarts via its own timer
+    if (this.connectedPlayers(room).length >= LIMITS.minPlayersToStart) {
+      this.beginGame(room, room.settings.totalRounds);
+    }
+  }
+
+  private beginGame(room: Room, totalRounds: number): void {
     // Reset per-game state. turnSeq is NOT reset: it keeps increasing across
     // games, so a timer from a previous game can never match a new turn.
     const game = room.game;
     game.phase = "starting";
-    game.totalRounds = options.rounds ?? room.settings.totalRounds;
+    game.totalRounds = totalRounds;
     game.round = 0;
     game.drawQueue = [];
     game.turn = null;
@@ -187,8 +206,25 @@ export class GameService implements GameHooks {
     game.turn = null;
     game.drawQueue = [];
 
-    this.broadcaster.toRoom(room.code, "game:finished", { leaderboard: this.leaderboard(room) });
+    const isPublic = room.settings.visibility === "public";
+    this.broadcaster.toRoom(room.code, "game:finished", {
+      leaderboard: this.leaderboard(room),
+      nextGameInMs: isPublic ? this.config.publicRestartDelayMs : null,
+    });
     this.broadcaster.syncRoomState(room);
+
+    // Public rooms keep going: after the final scores, play again if there are
+    // still 2+ people online, otherwise wait for the next arrival.
+    if (isPublic) {
+      this.schedulePhase(room, this.config.publicRestartDelayMs, () => {
+        if (this.connectedPlayers(room).length >= LIMITS.minPlayersToStart) {
+          this.beginGame(room, room.settings.totalRounds);
+        } else {
+          room.game.phase = "waiting";
+          this.broadcaster.syncRoomState(room);
+        }
+      });
+    }
   }
 
   // ─────────────────── GameHooks (roster changes) ───────────────────
@@ -197,6 +233,7 @@ export class GameService implements GameHooks {
     // A late joiner gets a turn this round (they're appended to the queue).
     const phase = room.game.phase;
     if (phase === "playing" || phase === "between_turns") room.game.drawQueue.push(player.id);
+    this.maybeAutoStart(room);
   }
 
   onPlayerDisconnected(room: Room): void {
@@ -206,8 +243,10 @@ export class GameService implements GameHooks {
     this.checkAllGuessed(room);
   }
 
-  onPlayerReconnected(): void {
-    // Nothing to do: the reconnecting client gets room:state and draw:sync.
+  onPlayerReconnected(room: Room): void {
+    // The client gets room:state and draw:sync from the room service. In a
+    // public room, a returning player might be the second person needed.
+    this.maybeAutoStart(room);
   }
 
   onPlayerRemoved(room: Room, player: Player): void {

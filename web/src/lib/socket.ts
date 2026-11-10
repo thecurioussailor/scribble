@@ -89,6 +89,11 @@ export function createRoom(username: string) {
   return enterRoom((s) => s.timeout(8000).emitWithAck("room:create", { username }), username);
 }
 
+/** "Play with anyone": the server picks (or opens) a public room. */
+export function quickJoin(username: string) {
+  return enterRoom((s) => s.timeout(8000).emitWithAck("room:quick-join", { username }), username);
+}
+
 export function joinRoom(roomCode: string, username: string, sessionToken?: string) {
   return enterRoom(
     (s) => s.timeout(8000).emitWithAck("room:join", { roomCode, username, ...(sessionToken ? { sessionToken } : {}) }),

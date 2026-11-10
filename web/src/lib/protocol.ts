@@ -79,6 +79,8 @@ export interface RoomStateView {
   code: string;
   hostId: PlayerId;
   selfId: PlayerId;
+  /** public: matched strangers, no host controls. private: invite-only, host starts. */
+  visibility: "public" | "private";
   phase: GamePhase;
   round: number;
   totalRounds: number;
@@ -118,6 +120,7 @@ export interface ClientToServerEvents {
     ack: Ack<JoinRoomResult>,
   ) => void;
   "room:join": (payload: { roomCode: string; username: string; sessionToken?: string }, ack: Ack<JoinRoomResult>) => void;
+  "room:quick-join": (payload: { username: string }, ack: Ack<JoinRoomResult>) => void;
   "room:leave": (ack?: Ack) => void;
   "game:start": (payload: { rounds?: number }, ack: Ack) => void;
   "draw:start": (payload: { strokeId: string; color: string; size: number; point: Point }, ack?: Ack) => void;
@@ -145,7 +148,7 @@ export interface ServerToClientEvents {
     scores: TurnScore[];
     nextTurnAt: number | null;
   }) => void;
-  "game:finished": (payload: { leaderboard: LeaderboardEntry[] }) => void;
+  "game:finished": (payload: { leaderboard: LeaderboardEntry[]; nextGameInMs: number | null }) => void;
   "draw:start": (payload: { strokeId: string; color: string; size: number; point: Point }) => void;
   "draw:move": (payload: { strokeId: string; points: Point[] }) => void;
   "draw:end": (payload: { strokeId: string }) => void;

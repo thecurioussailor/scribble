@@ -6,6 +6,7 @@ import type {
   DrawStartPayload,
   GuessSubmitPayload,
   JoinRoomPayload,
+  QuickJoinPayload,
   StartGamePayload,
 } from "../validation/schemas.js";
 import type {
@@ -14,6 +15,7 @@ import type {
   PlayerId,
   Point,
   RoomCode,
+  RoomVisibility,
   Stroke,
   TurnEndReason,
   TurnScore,
@@ -82,6 +84,8 @@ export interface RoomStateView {
   hostId: PlayerId;
   /** The ID of the player receiving this view. */
   selfId: PlayerId;
+  /** "public" rooms have no host controls: the frontend skips the lobby. */
+  visibility: RoomVisibility;
   phase: GamePhase;
   round: number;
   totalRounds: number;
@@ -110,6 +114,8 @@ export interface JoinRoomResult {
 export interface ClientToServerEvents {
   "room:create": (payload: CreateRoomPayload, ack: Ack<JoinRoomResult>) => void;
   "room:join": (payload: JoinRoomPayload, ack: Ack<JoinRoomResult>) => void;
+  /** Matchmaking: join the busiest public room with a free seat, or open a new one. */
+  "room:quick-join": (payload: QuickJoinPayload, ack: Ack<JoinRoomResult>) => void;
   "room:leave": (ack?: Ack) => void;
 
   "game:start": (payload: StartGamePayload, ack: Ack) => void;
@@ -156,7 +162,11 @@ export interface ServerToClientEvents {
     scores: TurnScore[];
     nextTurnAt: number | null;
   }) => void;
-  "game:finished": (payload: { leaderboard: LeaderboardEntry[] }) => void;
+  "game:finished": (payload: {
+    leaderboard: LeaderboardEntry[];
+    /** Public rooms restart automatically after this delay; null for private rooms. */
+    nextGameInMs: number | null;
+  }) => void;
 
   "draw:start": (payload: { strokeId: string; color: string; size: number; point: Point }) => void;
   "draw:move": (payload: { strokeId: string; points: Point[] }) => void;

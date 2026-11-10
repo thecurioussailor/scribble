@@ -51,7 +51,7 @@ export function createGameServer(config: AppConfig): GameServer {
   roomService.setGameHooks({
     onPlayerJoined: (room, player) => gameService.onPlayerJoined(room, player),
     onPlayerDisconnected: (room) => gameService.onPlayerDisconnected(room),
-    onPlayerReconnected: () => gameService.onPlayerReconnected(),
+    onPlayerReconnected: (room) => gameService.onPlayerReconnected(room),
     onPlayerRemoved: (room, player) => {
       gameService.onPlayerRemoved(room, player);
       voiceService.removeParticipant(room.code, player.id);

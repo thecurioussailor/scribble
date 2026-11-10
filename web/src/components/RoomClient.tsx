@@ -183,7 +183,10 @@ function JoinedRoom({ state }: { state: RoomStateView }) {
     router.push("/");
   }
   const gameRunning = state.phase === "starting" || state.phase === "playing" || state.phase === "between_turns";
-  return gameRunning ? <GameView state={state} onLeave={onLeave} /> : <Lobby state={state} onLeave={onLeave} />;
+  // Public games have no lobby: you're dropped straight onto the game screen,
+  // which shows "waiting for players" and the final scores as overlays.
+  if (state.visibility === "public" || gameRunning) return <GameView state={state} onLeave={onLeave} />;
+  return <Lobby state={state} onLeave={onLeave} />;
 }
 
 function Lobby({ state, onLeave }: { state: RoomStateView; onLeave: () => void }) {

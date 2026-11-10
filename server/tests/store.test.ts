@@ -3,7 +3,7 @@ import { createPlayer, createRoom } from "../src/store/room.factory.js";
 import { RoomStore } from "../src/store/room.store.js";
 import { ROOM_CODE_PATTERN } from "../src/utils/ids.js";
 
-const settings = { maxPlayers: 8, totalRounds: 3, turnDurationMs: 80_000 };
+const settings = { visibility: "private" as const, maxPlayers: 8, totalRounds: 3, turnDurationMs: 80_000 };
 
 function makeRoom(store: RoomStore) {
   const host = createPlayer("alice", "socket-1");
